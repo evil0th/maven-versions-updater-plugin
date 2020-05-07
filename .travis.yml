@@ -1,0 +1,38 @@
+language: java
+jdk:
+  - openjdk8
+git:
+  submodules: false
+
+# Cache settings
+cache:
+  timeout: 600
+  directories:
+    - $HOME/.gradle/caches/
+    - $HOME/.gradle/wrapper/
+before_cache:
+  - rm -f  $HOME/.gradle/caches/modules-2/modules-2.lock
+  - rm -fr $HOME/.gradle/caches/*/plugin-resolution/
+
+env:
+  - IDEA_VERSION=LATEST-EAP-SNAPSHOT
+  - IDEA_VERSION=2020.1
+
+before_install:
+  - chmod +x gradlew
+  - pip install --user codecov
+
+after_success:
+  - codecov
+
+deploy:
+  provider: releases
+  api_key: ${GITHUB_KEY}
+  skip_cleanup: true
+  file_glob: true
+  file: "build/distributions/maven-versions-updater-*.zip"
+  on:
+    tags: true
+    condition: $TRAVIS_TAG =~ ^releasebuild_[0-9]+.*$
+after_deploy:
+  - ./gradlew publishPlugin

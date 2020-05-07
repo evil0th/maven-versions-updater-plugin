@@ -1,0 +1,14 @@
+*.log
+out/
+target/
+.gradle/
+build/
+generated/
+idea-sandbox/
+distro/
+*.iml
+*.ipr
+*.iws
+.idea/
+.DS_Store
+README.local.md
