@@ -1,3 +1,5 @@
 maven-versions-updater-plugin
 ======================
-[![Build Status][badge-travis-img]][badge-travis] [![Code Coverage](https://img.shields.io/codecov/c/github/saharag/maven-versions-updater-plugin/master.svg)](https://codecov.io/github/saharag/maven-versions-updater-plugin?branch=master)
+[![Build Status](https://travis-ci.org/saharag/maven-versions-updater-plugin.svg?branch=master)](https://travis-ci.org/saharag/maven-versions-updater-plugin)
+[![codecov](https://codecov.io/gh/saharag/maven-versions-updater-plugin/branch/master/graph/badge.svg)](https://codecov.io/gh/saharag/maven-versions-updater-plugin)
+![license](https://img.shields.io/github/license/saharag/maven-versions-updater-plugin.svg)
