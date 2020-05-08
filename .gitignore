@@ -2,6 +2,8 @@
 out/
 target/
 .gradle/
+!gradle-wrapper.jar
+!gradle-wrapper.properties
 build/
 generated/
 idea-sandbox/
