@@ -1,8 +1,8 @@
 <idea-plugin>
     <id>maven-versions-updater-plugin</id>
     <name>Maven Updater</name>
-    <vendor email="cs.liaow@gmail.com" url="https://github.com/saharag/maven-versions-updater-plugin">Sahara
-        Team</vendor>
+    <vendor email="cs.liaow@gmail.com" url="https://github.com/saharag/maven-versions-updater-plugin">Sahara Team
+    </vendor>
     <version>0.1</version>
 
     <idea-version since-build="190.00"/>
@@ -19,14 +19,14 @@
 
     <extensions defaultExtensionNs="com.intellij">
         <!-- inspections -->
-        <localInspection
-                shortName="MavenDependenciesVersionUpdate"
-                displayName="MavenVersionsUpdater"
-                groupName="Maven"
-                enabledByDefault="true"
-                language="XML"
-                level="WARNING"
-                implementationClass="com.sahara.intellij.plugin.mvn.MavenDependenciesVersionUpdateInspection"/>
+        <localInspection language="XML"
+                         shortName="MavenVersionsUpdater"
+                         bundle="messages.MavenVersionUpdateBundle"
+                         key="inspection.version.updater.name"
+                         enabledByDefault="true"
+                         level="WARNING"
+                         implementationClass="com.sahara.intellij.plugin.mvn.MavenDependenciesVersionUpdateInspection"
+                         groupKey="inspection.group"/>
     </extensions>
 
     <actions>

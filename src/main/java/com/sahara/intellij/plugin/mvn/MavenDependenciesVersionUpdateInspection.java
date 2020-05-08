@@ -5,30 +5,39 @@ import com.intellij.codeInspection.LocalQuickFixBase;
 import com.intellij.codeInspection.ProblemDescriptor;
 import com.intellij.lang.annotation.HighlightSeverity;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.vfs.VirtualFile;
-import com.intellij.psi.impl.source.xml.XmlTagImpl;
+import com.intellij.psi.PsiElement;
+import com.intellij.psi.xml.XmlElement;
 import com.intellij.psi.xml.XmlTag;
+import com.intellij.psi.xml.XmlText;
 import com.intellij.util.Processor;
 import com.intellij.util.xml.DomFileElement;
+import com.intellij.util.xml.GenericDomValue;
 import com.intellij.util.xml.highlighting.DomElementAnnotationHolder;
 import com.intellij.util.xml.highlighting.DomElementAnnotationsManager;
 import com.intellij.util.xml.highlighting.DomElementsInspection;
 import com.intellij.util.xml.highlighting.DomHighlightingHelper;
 import org.apache.maven.artifact.versioning.ComparableVersion;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 import org.jetbrains.idea.maven.dom.MavenDomProjectProcessorUtils;
 import org.jetbrains.idea.maven.dom.MavenDomUtil;
 import org.jetbrains.idea.maven.dom.model.MavenDomDependency;
 import org.jetbrains.idea.maven.dom.model.MavenDomProjectModel;
+import org.jetbrains.idea.maven.dom.references.MavenPropertyPsiReference;
+import org.jetbrains.idea.maven.dom.references.MavenPsiElementWrapper;
 import org.jetbrains.idea.maven.indices.MavenArtifactSearchResult;
 import org.jetbrains.idea.maven.indices.MavenArtifactSearcher;
 import org.jetbrains.idea.maven.model.MavenCoordinate;
 import org.jetbrains.idea.maven.onlinecompletion.model.MavenRepositoryArtifactInfo;
+import org.jetbrains.idea.maven.server.MavenServerManager;
 
 import java.util.Arrays;
 import java.util.List;
 
-import static org.jetbrains.idea.maven.dom.MavenDomUtil.getProjectName;
+import static com.intellij.openapi.util.text.StringUtil.isEmpty;
+import static com.intellij.util.containers.ContainerUtil.findInstance;
 
 
 /**
@@ -38,6 +47,11 @@ import static org.jetbrains.idea.maven.dom.MavenDomUtil.getProjectName;
  * Create on 2020/5/7 14:33
  */
 public class MavenDependenciesVersionUpdateInspection extends DomElementsInspection<MavenDomProjectModel> {
+    public final static String DEFINED_AS_PROPERTY = "/\\$\\{.*}/";
+    public final static String DEFINED_AS_PROPERTY_START = "${";
+    public final static String MAVEN_VERSION_35 = "3.5";
+    public final static String VALUE_TO_CHECK = "\\$\\{(revision|sha1|changelist)}";
+
     public MavenDependenciesVersionUpdateInspection() {
         super(MavenDomProjectModel.class);
     }
@@ -93,6 +107,7 @@ public class MavenDependenciesVersionUpdateInspection extends DomElementsInspect
                     continue;
                 }
                 String version = dependency.getVersion().getStringValue();
+                System.out.println("[" + groupId + ":" + artifactId + "] found :" + version);
                 if (domFileElement.getModule() != null && version != null) {
                     // remote https://package-search.services.jetbrains.com/api/search/idea/fulltext?query=${pattern}
                     String pattern = groupId + ":" + artifactId + ":";
@@ -144,35 +159,105 @@ public class MavenDependenciesVersionUpdateInspection extends DomElementsInspect
                                    String artifactId,
                                    String version,
                                    String latestVersion) {
-        LocalQuickFix fix = new LocalQuickFixBase("replace with " + latestVersion) {
-            @Override
-            public void applyFix(@NotNull Project project, @NotNull ProblemDescriptor descriptor) {
-                if (descriptor.getPsiElement() instanceof XmlTagImpl) {
-                    final XmlTag[] versions = ((XmlTagImpl) descriptor.getPsiElement()).findSubTags("version");
-                    if (versions.length == 1) {
-                        versions[0].getValue().setText(latestVersion);
+        if (model == null) {
+            return;
+        }
+
+        GenericDomValue<String> domValue = dependency.getVersion();
+        // ${xx.version}
+        String unresolvedValue = domValue.getRawText();
+        if (unresolvedValue == null) {
+            return;
+        }
+        boolean maven35 = StringUtil.compareVersionNumbers(MavenServerManager.getInstance().getCurrentMavenVersion(), MAVEN_VERSION_35) >= 0;
+        String valueToCheck = maven35 ? unresolvedValue.replaceAll(VALUE_TO_CHECK, "") : unresolvedValue;
+        System.out.println("[" + groupId + ":" + artifactId + "] value to check : " + valueToCheck);
+
+        LocalQuickFix fix = null;
+        if (valueToCheck.contains(DEFINED_AS_PROPERTY_START)) {
+            // resolved value defined in property, 1.2.3
+            String resolvedValue = domValue.getStringValue();
+            if (resolvedValue == null) {
+                return;
+            }
+
+            if (unresolvedValue.equals(resolvedValue) || resolvedValue.contains(DEFINED_AS_PROPERTY_START)) {
+                resolvedValue = resolveXmlElement(domValue.getXmlElement());
+            }
+
+            // find reference property
+            MavenPropertyPsiReference psiReference = findInstance(domValue.getXmlElement().getReferences(), MavenPropertyPsiReference.class);
+            if (psiReference == null) {
+                return;
+            }
+            PsiElement resolvedElement = psiReference.resolve();
+            if (resolvedElement == null) {
+                return;
+            }
+            PsiElement psiElement = ((MavenPsiElementWrapper) resolvedElement).getWrappee();
+
+            if (!unresolvedValue.equals(resolvedValue) && !isEmpty(resolvedValue)) {
+                fix = new LocalQuickFixBase(MavenVersionUpdateBundle.message("replace.property.version", latestVersion)) {
+                    @Override
+                    public void applyFix(@NotNull Project project, @NotNull ProblemDescriptor descriptor) {
+                        if (psiElement instanceof XmlTag) {
+                            ((XmlTag) psiElement).getValue().setText(latestVersion);
+                        } else if (psiElement instanceof XmlText) {
+                            ((XmlText) psiElement).setValue(latestVersion);
+                        }
+                    }
+                };
+            }
+        } else {
+            fix = new LocalQuickFixBase(MavenVersionUpdateBundle.message("replace.element.version", latestVersion)) {
+                @Override
+                public void applyFix(@NotNull Project project, @NotNull ProblemDescriptor descriptor) {
+                    PsiElement psiElement = descriptor.getPsiElement();
+                    if (psiElement instanceof XmlTag) {
+                        ((XmlTag) psiElement).getValue().setText(latestVersion);
+                    } else if (psiElement instanceof XmlText) {
+                        ((XmlText) psiElement).setValue(latestVersion);
                     }
                 }
-            }
-        };
+            };
+        }
         String projectName = createLinkText(model, dependency);
-        holder.createProblem(dependency, HighlightSeverity.WARNING,
-                MessageBundle.message("inspection.version.outdated", projectName, groupId, artifactId, version, latestVersion),
-                fix);
+        holder.createProblem(dependency.getVersion(), HighlightSeverity.WARNING,
+                MavenVersionUpdateBundle.message("inspection.version.outdated", projectName, groupId, artifactId, version, latestVersion), fix);
     }
 
     private static String createLinkText(@NotNull MavenDomProjectModel model, @NotNull MavenDomDependency dependency) {
         XmlTag tag = dependency.getXmlTag();
         if (tag == null) {
-            return getProjectName(model);
+            return MavenDomUtil.getProjectName(model);
         }
         VirtualFile file = tag.getContainingFile().getVirtualFile();
         if (file == null) {
-            return getProjectName(model);
+            return MavenDomUtil.getProjectName(model);
         }
         return String.format("<a href ='#navigation/%s:%s'>%s</a>",
                 file.getPath(),
                 tag.getTextRange().getStartOffset(),
                 MavenDomUtil.getProjectName(model));
+    }
+
+    @Nullable
+    private static String resolveXmlElement(@Nullable XmlElement xmlElement) {
+        if (xmlElement == null) {
+            return null;
+        }
+        MavenPropertyPsiReference psiReference = findInstance(xmlElement.getReferences(), MavenPropertyPsiReference.class);
+        if (psiReference == null) {
+            return null;
+        }
+        PsiElement resolvedElement = psiReference.resolve();
+        if (!(resolvedElement instanceof MavenPsiElementWrapper)) {
+            return null;
+        }
+        PsiElement xmlTag = ((MavenPsiElementWrapper) resolvedElement).getWrappee();
+        if (!(xmlTag instanceof XmlTag)) {
+            return null;
+        }
+        return ((XmlTag) xmlTag).getValue().getTrimmedText();
     }
 }
