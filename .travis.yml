@@ -43,3 +43,4 @@ deploy:
 
 after_deploy:
   - ./gradlew publishPlugin
+
