@@ -1,4 +1,8 @@
 language: java
+
+notifications:
+  email: false
+
 jdk:
   - openjdk8
 
