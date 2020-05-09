@@ -36,7 +36,7 @@ deploy:
   token: ${GITHUB_TOKEN}
   cleanup: false
   file_glob: true
-  file: "build/distributions/maven-versions-updater-*.zip"
+  file: "build/distributions/maven-versions-updater-plugin-*.zip"
   on:
     tags: true
     condition: $TRAVIS_TAG =~ ^releasebuild_[0-9]+.*$
