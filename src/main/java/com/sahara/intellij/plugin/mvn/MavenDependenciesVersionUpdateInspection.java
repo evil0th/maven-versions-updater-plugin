@@ -21,7 +21,6 @@ import com.intellij.util.xml.highlighting.DomHighlightingHelper;
 import org.apache.maven.artifact.versioning.ComparableVersion;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-import org.jetbrains.idea.maven.dom.MavenDomProjectProcessorUtils;
 import org.jetbrains.idea.maven.dom.MavenDomUtil;
 import org.jetbrains.idea.maven.dom.model.MavenDomDependency;
 import org.jetbrains.idea.maven.dom.model.MavenDomProjectModel;
@@ -32,9 +31,12 @@ import org.jetbrains.idea.maven.indices.MavenArtifactSearcher;
 import org.jetbrains.idea.maven.model.MavenCoordinate;
 import org.jetbrains.idea.maven.onlinecompletion.model.MavenRepositoryArtifactInfo;
 import org.jetbrains.idea.maven.server.MavenServerManager;
+import org.jetbrains.idea.maven.utils.MavenLog;
 
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 import static com.intellij.openapi.util.text.StringUtil.isEmpty;
 import static com.intellij.util.containers.ContainerUtil.findInstance;
@@ -66,19 +68,7 @@ public class MavenDependenciesVersionUpdateInspection extends DomElementsInspect
      */
     @Override
     public void checkFileElement(DomFileElement<MavenDomProjectModel> domFileElement, DomElementAnnotationHolder holder) {
-        checkManagedDependencies(domFileElement, holder);
-        checkDependencies(domFileElement, holder);
-    }
-
-    private static void checkDependencies(@NotNull DomFileElement<MavenDomProjectModel> domFileElement,
-                                          @NotNull DomElementAnnotationHolder holder) {
-        process(domFileElement, holder, false);
-    }
-
-
-    private static void checkManagedDependencies(@NotNull DomFileElement<MavenDomProjectModel> domFileElement,
-                                                 @NotNull DomElementAnnotationHolder holder) {
-        process(domFileElement, holder, true);
+        process(domFileElement, holder);
     }
 
     /**
@@ -86,28 +76,25 @@ public class MavenDependenciesVersionUpdateInspection extends DomElementsInspect
      *
      * @param domFileElement file element to check
      * @param holder         the place to store problems
-     * @param managed        is managed dependencies
      */
     private static void process(@NotNull DomFileElement<MavenDomProjectModel> domFileElement,
-                                @NotNull DomElementAnnotationHolder holder,
-                                boolean managed) {
+                                @NotNull DomElementAnnotationHolder holder) {
         MavenDomProjectModel projectModel = domFileElement.getRootElement();
-        List<MavenDomDependency> dependencies;
-        if (managed) {
-            dependencies = projectModel.getDependencyManagement().getDependencies().getDependencies();
-        } else {
-            dependencies = projectModel.getDependencies().getDependencies();
-        }
+        Set<MavenDomDependency> dependencies = new HashSet<>(projectModel.getDependencies().getDependencies());
+        dependencies.addAll(projectModel.getDependencyManagement().getDependencies().getDependencies());
+        MavenLog.LOG.info(dependencies.size() + " dependencies found in current virtual file path : " + domFileElement.getFile().getVirtualFile().getPath());
         MavenArtifactSearcher searcher = new MavenArtifactSearcher();
         Processor<MavenDomProjectModel> processor = mavenDomProjectModel -> {
+            int i = 0;
             for (MavenDomDependency dependency : dependencies) {
+                i++;
                 String groupId = dependency.getGroupId().getStringValue();
                 String artifactId = dependency.getArtifactId().getStringValue();
                 if (null == groupId || null == artifactId) {
                     continue;
                 }
                 String version = dependency.getVersion().getStringValue();
-                System.out.println("[" + groupId + ":" + artifactId + "] found :" + version);
+                System.out.println(i + "/" + dependencies.size() + " [" + groupId + ":" + artifactId + "] found :" + version);
                 if (domFileElement.getModule() != null && version != null) {
                     // remote https://package-search.services.jetbrains.com/api/search/idea/fulltext?query=${pattern}
                     String pattern = groupId + ":" + artifactId + ":";
@@ -137,8 +124,10 @@ public class MavenDependenciesVersionUpdateInspection extends DomElementsInspect
             }
             return false;
         };
-        MavenDomProjectProcessorUtils.processChildrenRecursively(projectModel, processor);
-        MavenDomProjectProcessorUtils.processParentProjects(projectModel, processor);
+        // process self only
+        processor.process(projectModel);
+//        MavenDomProjectProcessorUtils.processChildrenRecursively(projectModel, processor, true);
+//        MavenDomProjectProcessorUtils.processParentProjects(projectModel, processor);
     }
 
     /**
