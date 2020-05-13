@@ -95,30 +95,32 @@ public class MavenDependenciesVersionUpdateInspection extends DomElementsInspect
                 }
                 String version = dependency.getVersion().getStringValue();
                 System.out.println(i + "/" + dependencies.size() + " [" + groupId + ":" + artifactId + "] found :" + version);
-                if (domFileElement.getModule() != null && version != null) {
-                    // remote https://package-search.services.jetbrains.com/api/search/idea/fulltext?query=${pattern}
-                    String pattern = groupId + ":" + artifactId + ":";
-                    List<MavenArtifactSearchResult> results = searcher.search(domFileElement.getModule().getProject(),
-                            pattern, 1000);
-                    for (MavenArtifactSearchResult result : results) {
-                        MavenRepositoryArtifactInfo info = result.getSearchResults();
-                        MavenCoordinate[] versions = info.getItems();
-                        Arrays.sort(versions, (i1, i2) -> {
-                            String v1 = i1.getVersion();
-                            String v2 = i2.getVersion();
-                            assert v2 != null;
-                            assert v1 != null;
-                            return new ComparableVersion(v2).compareTo(new ComparableVersion(v1));
-                        });
-                        // latest version item
-                        MavenCoordinate coordinate = versions[0];
-                        String latestVersion = coordinate.getVersion();
-                        if (groupId.equals(coordinate.getGroupId())
-                                && artifactId.equals(coordinate.getArtifactId())
-                                && !version.equals(latestVersion)) {
-                            System.out.println("[" + groupId + ":" + artifactId + "] found latest version : " + latestVersion);
-                            addProblem(dependency, holder, projectModel, groupId, artifactId, version, latestVersion);
-                        }
+                if (null == domFileElement.getModule() || null == version) {
+                    continue;
+                }
+                // remote https://package-search.services.jetbrains.com/api/search/idea/fulltext?query=${pattern}
+                String pattern = groupId + ":" + artifactId + ":";
+                List<MavenArtifactSearchResult> results = searcher.search(domFileElement.getModule().getProject(),
+                        pattern, 1000);
+                for (MavenArtifactSearchResult result : results) {
+                    MavenRepositoryArtifactInfo info = result.getSearchResults();
+                    if (!(groupId.equals(info.getGroupId()) && artifactId.equals(info.getArtifactId()))) {
+                        continue;
+                    }
+                    MavenCoordinate[] versions = info.getItems();
+                    Arrays.sort(versions, (i1, i2) -> {
+                        String v1 = i1.getVersion();
+                        String v2 = i2.getVersion();
+                        assert v2 != null;
+                        assert v1 != null;
+                        return new ComparableVersion(v2).compareTo(new ComparableVersion(v1));
+                    });
+                    // latest version item
+                    MavenCoordinate coordinate = versions[0];
+                    String latestVersion = coordinate.getVersion();
+                    if (new ComparableVersion(latestVersion).compareTo(new ComparableVersion(version)) > 0) {
+                        System.out.println("[" + groupId + ":" + artifactId + "] found latest version : " + latestVersion);
+                        addProblem(dependency, holder, projectModel, groupId, artifactId, version, latestVersion);
                     }
                 }
             }

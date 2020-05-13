@@ -3,7 +3,7 @@
     <name>Maven Updater</name>
     <vendor email="cs.liaow@gmail.com" url="https://github.com/saharag/maven-versions-updater-plugin">Sahara Team
     </vendor>
-    <version>0.1</version>
+    <version><![CDATA[ version will be added by gradle build]]></version>
 
     <idea-version since-build="190.00"/>
 
